@@ -5,8 +5,10 @@ const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const port = process.env.PORT || 5000
 require('dotenv').config()
+const stripe = require('stripe')(process.env.PAYMENT_SECRET_KEY)
 
-// miidwire
+
+// miidlewire
 app.use(cors())
 app.use(express.json())
 
@@ -52,17 +54,17 @@ const client = new MongoClient(uri, {
 async function run() {
     try {
         // Connect the client to the server	(optional starting in v4.7)
-        await client.connect();
+        // await client.connect();
 
 
         // ------------------------------
 
 
         const menuCollection = client.db("bistroDb").collection("menu");
-        const reviewcollection = client.db("bistroDb").collection("reviews");
         const cartCollection = client.db("bistroDb").collection("carts");
         const userCollection = client.db("bistroDb").collection("users");
-
+        const paymentCollection = client.db("bistroDb").collection("payments");
+        const reviewsCollection = client.db("bistroDb").collection("reviews")
 
         // jwt token create
 
@@ -90,6 +92,12 @@ async function run() {
          * 2. use verifyAdmin middleware
         */
 
+
+        // for review
+        app.get('/reviews', async (req, res) => {
+            const result = await reviewsCollection.find().toArray()
+            res.send(result)
+        })
 
         // for user related Apis
 
@@ -170,13 +178,7 @@ async function run() {
         })
 
 
-        // for review
 
-        app.get('/reviews', async (req, res) => {
-            const result = await reviewcollection.find().toArray()
-            res.send(result)
-
-        })
 
         // for cart collection apis
         app.get('/carts', verifyJwt, async (req, res) => {
@@ -218,10 +220,40 @@ async function run() {
         })
 
 
+        // create payment intend
+        app.post('/create-payment-intent', verifyJwt, async (req, res) => {
+            const { price } = req.body
+            const amount = price * 100
+            const paymentIntent = await stripe.paymentIntents.create({
+                amount: amount,
+                currency: `usd`,
+                payment_method_types: ['card']
+            })
+            res.send({
+                clientSecret: paymentIntent.client_secret,
+            });
+        })
+
+
+        // ?payment related API
+        app.post('/payments', verifyJwt, async (req, res) => {
+
+
+
+            const payment = req.body
+            const insertResult = await paymentCollection.insertOne(payment)
+
+
+            const query = { _id: { $in: payment.cartItems.map(id => ObjectId(id)) } }
+
+            const deleteResult = await cartCollection.deleteMany(query)
+
+            res.send({ insertResult, deleteResult })
 
 
 
 
+        })
 
 
 
